@@ -48,7 +48,7 @@ info "Detected OS: $DISTRO_ID $DISTRO_VER"
 # Basic Pre-requisites
 # -----------------------------
 info "Installing prerequisites..."
-if [[ $DISTRO_ID =~ (ubuntu|debian) ]]; then
+ if [[ $DISTRO_ID =~ (ubuntu|debian) ]]; then
     apt-get update -y
     DEBIAN_FRONTEND=noninteractive apt-get install -y curl wget gnupg2 lsb-release iptables ufw unzip jq software-properties-common git openssl socat openvpn easy-rsa nginx systemd-resolve
 else
@@ -62,99 +62,6 @@ generate_self_signed_tls(){
     CERT_DIR="/etc/ssl/xray"
     mkdir -p "$CERT_DIR"
     openssl req -x509 -nodes -newkey rsa:2048 -days 3650 \
-      -subj "/CN=${DOMAIN:-$(hostname)}" \
-      -keyout "$CERT_DIR/privkey.pem" -out "$CERT_DIR/fullchain.pem"
-    info "Self-signed TLS generated at $CERT_DIR"
-}
-
-# -----------------------------
-# Xray Install + Config + Client Export
-# -----------------------------
-install_xray(){
-    info "Installing Xray-core..."
-    bash <(curl -L https://github.com/XTLS/Xray-install/raw/main/install-release.sh) install
-    generate_self_signed_tls
-    info "Xray-core installed and TLS applied."
-    systemctl enable xray && systemctl restart xray
-
-    # Generate example client config
-    CLIENT_UUID=$(uuidgen)
-    CLIENT_FILE="$CLIENT_CONFIG_DIR/xray-client.json"
-    cat > "$CLIENT_FILE" <<EOL
-{
-  "vnext": [{
-    "address": "${DOMAIN:-$(hostname)}",
-    "port": 443,
-    "users": [{ "id": "$CLIENT_UUID", "alterId": 0 }]
-  }]
-}
-EOL
-    info "Xray client config exported to $CLIENT_FILE"
-
-    echo -e "
-Summary:
-  UUID: $CLIENT_UUID
-  Config Path: $CLIENT_FILE
-  TLS: /etc/ssl/xray/fullchain.pem
-  Quick Download: scp root@$(hostname -I | awk '{print $1}'):$CLIENT_FILE ./
-"
-}
-
-# -----------------------------
-# OpenVPN Install + Config + Client Export
-# -----------------------------
-install_openvpn(){
-    info "Installing OpenVPN..."
-    apt-get install -y openvpn easy-rsa
-    make-cadir /etc/openvpn/easy-rsa
-    cd /etc/openvpn/easy-rsa || return
-    ./easyrsa init-pki
-    ./easyrsa build-ca nopass
-    ./easyrsa gen-req server nopass
-    ./easyrsa sign-req server server
-    ./easyrsa gen-dh
-    openvpn --genkey --secret ta.key
-    systemctl enable openvpn && systemctl start openvpn
-
-    # Generate example client config
-    CLIENT_OVPN="$CLIENT_CONFIG_DIR/client.ovpn"
-    cat > "$CLIENT_OVPN" <<EOL
-client
-dev tun
-proto udp
-remote ${DOMAIN:-$(hostname)} 1194
-resolv-retry infinite
-nobind
-persist-key
-persist-tun
-remote-cert-tls server
-cipher AES-256-CBC
-key-direction 1
-verb 3
-<ca>
-$(cat pki/ca.crt)
-</ca>
-<cert>
-# CLIENT CERT HERE
-</cert>
-<key>
-# CLIENT KEY HERE
-</key>
-<tls-auth>
-$(cat ta.key)
-</tls-auth>
-EOL
-    info "OpenVPN client config exported to $CLIENT_OVPN"
-    echo -e "Quick Download: scp root@$(hostname -I | awk '{print $1}'):$CLIENT_OVPN ./"
-}
-
-# -----------------------------
-# SLDNS placeholder
-# -----------------------------
-install_sldns(){
-    info "Setting up SLDNS (placeholder)..."
-    sleep 1
-}
 
 # -----------------------------
 # OHP placeholder
